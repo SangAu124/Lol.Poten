@@ -40,8 +40,8 @@ export default function AnalysisPage() {
           console.log(`Trying Riot ID: ${gameName}#${tagLine}`)
           
           try {
-            const { fetchAccountByRiotId } = await import('@/utils/riotApi')
-            accountData = await fetchAccountByRiotId(gameName, tagLine || 'KR1')
+            const { fetchAccountData } = await import('@/utils/riotApi')
+            accountData = await fetchAccountData(`${gameName}#${tagLine || 'KR1'}`)
           } catch (error) {
             console.error('Riot ID lookup failed:', error)
             throw error
@@ -62,27 +62,38 @@ export default function AnalysisPage() {
           throw new Error('PUUID not found')
         }
 
-        // Step 2: Get summoner data and rank info
-        const { fetchSummonerByPuuid, fetchRankData, fetchMatchHistory, fetchMultipleMatchDetails } = await import('@/utils/riotApi')
+        // Step 2: Get summoner data using PUUID
+        const { fetchSummonerByPuuid } = await import('@/utils/riotApi')
         const summonerData = await fetchSummonerByPuuid(accountData.puuid)
         
         console.log('🔍 Account data:', { puuid: accountData.puuid?.substring(0, 8) + '...' })
-        console.log('🔍 Summoner data:', { id: summonerData?.id, name: summonerData?.name })
+        console.log('🔍 Summoner data:', { id: summonerData?.id, level: summonerData?.summonerLevel })
         
         // Continue even if summoner ID is missing - we'll handle it in fetchRankData
         console.log('🔄 Proceeding with available data...')
         
-        const rankData = await fetchRankData(summonerData.id, accountData.puuid)
+        const { fetchRankData, fetchMatchHistory, fetchMultipleMatchDetails } = await import('@/utils/riotApi')
+        const rankData = await fetchRankData(summonerData?.id, accountData.puuid)
         
         // Step 3: Get recent match history (20 games)
         const matchIds = await fetchMatchHistory(accountData.puuid, 20)
         const matchDetails = await fetchMultipleMatchDetails(matchIds)
         
         // Step 4: Analyze potential using enhanced algorithm
-        const { analyzePotential } = await import('@/utils/potentialAnalyzer')
-        const analysis = analyzePotential(summonerName, rankData, matchDetails, accountData.puuid)
+        console.log(`🔄 Starting potential analysis...`)
+        console.log(`📊 Rank data:`, rankData)
+        console.log(`📋 Match details count:`, matchDetails.length)
         
-        setAnalysisData(analysis)
+        const { analyzePotential } = await import('@/utils/potentialAnalyzer')
+        
+        try {
+          const analysis = analyzePotential(summonerName, rankData, matchDetails, accountData.puuid)
+          console.log(`✅ Analysis completed:`, analysis)
+          setAnalysisData(analysis)
+        } catch (analysisError) {
+          console.error(`❌ Analysis function error:`, analysisError)
+          throw analysisError
+        }
       } catch (error) {
         console.error('Analysis failed:', error)
         // Fallback to mock data for demonstration

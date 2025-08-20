@@ -23,7 +23,12 @@ export function analyzePotential(
     return analyzeByMatchDataOnly(summonerName, recentMatches, summonerPuuid)
   }
 
-  const winRate = Math.round((soloQueueData.wins / (soloQueueData.wins + soloQueueData.losses)) * 100)
+  console.log(`🔍 Solo queue data:`, soloQueueData)
+
+  const totalGames = (soloQueueData.wins || 0) + (soloQueueData.losses || 0)
+  const winRate = totalGames > 0 ? Math.round(((soloQueueData.wins || 0) / totalGames) * 100) : 0
+  
+  console.log(`🔍 WinRate calculation: wins=${soloQueueData.wins}, losses=${soloQueueData.losses}, totalGames=${totalGames}, winRate=${winRate}`)
   const recentGames = recentMatches.length
 
   // Step 2: Comprehensive data analysis
@@ -77,7 +82,9 @@ function analyzeByMatchDataOnly(
   // Calculate win rate from recent matches
   const validPerformances = performanceMetrics.performances.filter(p => p !== null)
   const wins = validPerformances.filter(p => p.win).length
-  const winRate = Math.round((wins / validPerformances.length) * 100)
+  const winRate = validPerformances.length > 0 ? Math.round((wins / validPerformances.length) * 100) : 0
+  
+  console.log(`🔍 Match-based WinRate: wins=${wins}, total=${validPerformances.length}, winRate=${winRate}`)
   
   // Calculate potential score based on performance metrics only
   const avgKDA = validPerformances.reduce((sum, p) => sum + p.kda, 0) / validPerformances.length
@@ -543,7 +550,8 @@ function identifyAdvancedStrengths(metrics: any, playStyle: any, rankData: RankD
   }
   
   // Rank-based strengths
-  const winRate = (rankData.wins / (rankData.wins + rankData.losses)) * 100
+  const totalRankGames = rankData.wins + rankData.losses
+  const winRate = totalRankGames > 0 ? (rankData.wins / totalRankGames) * 100 : 0
   if (winRate > 60) {
     strengths.push(`랭크 게임 ${winRate.toFixed(0)}% 승률로 꾸준한 티어 상승`)
   }
@@ -594,7 +602,8 @@ function identifyAdvancedImprovements(metrics: any, playStyle: any, rankData: Ra
   }
   
   // Rank-based improvements
-  const winRate = (rankData.wins / (rankData.wins + rankData.losses)) * 100
+  const totalRankGames = rankData.wins + rankData.losses
+  const winRate = totalRankGames > 0 ? (rankData.wins / totalRankGames) * 100 : 0
   if (winRate < 55) {
     improvements.push('게임 이해도 향상과 메타 챔피언 학습으로 승률 개선')
   }
@@ -617,7 +626,8 @@ function calculatePotentialScore(rankData: RankData, performance: any): number {
   score = tierScores[rankData.tier] || 50
 
   // Win rate adjustment
-  const winRate = (rankData.wins / (rankData.wins + rankData.losses)) * 100
+  const totalRankGames = rankData.wins + rankData.losses
+  const winRate = totalRankGames > 0 ? (rankData.wins / totalRankGames) * 100 : 0
   if (winRate > 60) score += 15
   else if (winRate > 55) score += 10
   else if (winRate < 45) score -= 10
@@ -666,7 +676,8 @@ function generatePotentialText(score: number, trend: string, tier: string): stri
 function identifyStrengths(performance: any, rankData: RankData): string[] {
   const strengths: string[] = []
   
-  const winRate = (rankData.wins / (rankData.wins + rankData.losses)) * 100
+  const totalRankGames = rankData.wins + rankData.losses
+  const winRate = totalRankGames > 0 ? (rankData.wins / totalRankGames) * 100 : 0
   
   if (winRate > 60) {
     strengths.push(`높은 승률 ${Math.round(winRate)}%로 꾸준한 상승세 유지`)
@@ -714,7 +725,8 @@ function identifyImprovements(performance: any, rankData: RankData): string[] {
     improvements.push('일관성 있는 플레이를 위한 챔피언 숙련도 향상')
   }
   
-  const winRate = (rankData.wins / (rankData.wins + rankData.losses)) * 100
+  const totalRankGames = rankData.wins + rankData.losses
+  const winRate = totalRankGames > 0 ? (rankData.wins / totalRankGames) * 100 : 0
   if (winRate < 50) {
     improvements.push('게임 이해도 향상과 메타 챔피언 학습')
   }
