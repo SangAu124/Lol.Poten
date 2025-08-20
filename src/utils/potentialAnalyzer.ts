@@ -3,12 +3,14 @@ import { PotentialAnalysis, RankData, MatchData, ParticipantData } from '@/types
 // Enhanced potential analysis algorithm following the specified approach
 export function analyzePotential(
   summonerName: string,
-  rankData: RankData[],
+  rankData: RankData | RankData[],
   recentMatches: MatchData[],
   summonerPuuid: string
 ): PotentialAnalysis {
-  // Find ranked solo queue data
-  const soloQueueData = rankData.find(rank => rank.queueType === 'RANKED_SOLO_5x5')
+  // Handle both single rank object and array of ranks
+  const soloQueueData = Array.isArray(rankData) 
+    ? rankData.find(rank => rank.queueType === 'RANKED_SOLO_5x5')
+    : rankData
   
   if (!soloQueueData) {
     return {

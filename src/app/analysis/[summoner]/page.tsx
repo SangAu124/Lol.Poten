@@ -30,16 +30,32 @@ export default function AnalysisPage() {
       setIsLoading(true)
       
       try {
-        // Step 1: Get account by Riot ID (try both formats)
+        // Step 1: Parse and get account data
         let accountData
-        try {
-          // Try with KR1 tag first
-          const { fetchAccountByRiotId } = await import('@/utils/riotApi')
-          accountData = await fetchAccountByRiotId(summonerName, 'KR1')
-        } catch (error) {
-          // Fallback to legacy summoner name format
-          const { fetchSummonerByName } = await import('@/utils/riotApi')
-          accountData = await fetchSummonerByName(summonerName)
+        const decodedName = decodeURIComponent(summonerName)
+        
+        // Check if input contains # (Riot ID format)
+        if (decodedName.includes('#')) {
+          const [gameName, tagLine] = decodedName.split('#')
+          console.log(`Trying Riot ID: ${gameName}#${tagLine}`)
+          
+          try {
+            const { fetchAccountByRiotId } = await import('@/utils/riotApi')
+            accountData = await fetchAccountByRiotId(gameName, tagLine || 'KR1')
+          } catch (error) {
+            console.error('Riot ID lookup failed:', error)
+            throw error
+          }
+        } else {
+          // Legacy summoner name format
+          console.log(`Trying legacy summoner name: ${decodedName}`)
+          try {
+            const { fetchSummonerByName } = await import('@/utils/riotApi')
+            accountData = await fetchSummonerByName(decodedName)
+          } catch (error) {
+            console.error('Legacy summoner lookup failed:', error)
+            throw error
+          }
         }
 
         if (!accountData?.puuid) {
@@ -49,7 +65,14 @@ export default function AnalysisPage() {
         // Step 2: Get summoner data and rank info
         const { fetchSummonerByPuuid, fetchRankData, fetchMatchHistory, fetchMultipleMatchDetails } = await import('@/utils/riotApi')
         const summonerData = await fetchSummonerByPuuid(accountData.puuid)
-        const rankData = await fetchRankData(summonerData.id)
+        
+        console.log('🔍 Account data:', { puuid: accountData.puuid?.substring(0, 8) + '...' })
+        console.log('🔍 Summoner data:', { id: summonerData?.id, name: summonerData?.name })
+        
+        // Continue even if summoner ID is missing - we'll handle it in fetchRankData
+        console.log('🔄 Proceeding with available data...')
+        
+        const rankData = await fetchRankData(summonerData.id, accountData.puuid)
         
         // Step 3: Get recent match history (20 games)
         const matchIds = await fetchMatchHistory(accountData.puuid, 20)

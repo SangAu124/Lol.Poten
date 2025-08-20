@@ -38,7 +38,7 @@ export default function Home() {
         <form onSubmit={handleSearch} className="relative">
           <input
             type="text"
-            placeholder="소환사명을 입력하세요"
+            placeholder="소환사명#태그 또는 소환사명 (예: Hide on bush#KR1)"
             value={summonerName}
             onChange={(e) => setSummonerName(e.target.value)}
             className="w-full px-6 py-4 text-lg bg-lol-blue/30 border-2 border-lol-gold/30 rounded-lg 
