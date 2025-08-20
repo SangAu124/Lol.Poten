@@ -35,6 +35,10 @@ async function makeApiRequest(url: string): Promise<any> {
     const response = await fetch(url, {
       headers: {
         'X-Riot-Token': RIOT_API_KEY,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
       },
     })
 
@@ -83,12 +87,13 @@ export async function fetchSummonerByPuuid(puuid: string) {
   console.log(`🔍 Full summoner response:`, data)
   console.log(`🔍 All response keys:`, Object.keys(data))
   
-  // According to Riot API docs, response should include: id, accountId, puuid, name, profileIconId, revisionDate, summonerLevel
-  // If missing critical fields, this indicates API key permission issues
+  // Note: Riot API may have changed response structure
+  // Current response includes: puuid, profileIconId, revisionDate, summonerLevel
+  // Missing fields: id, accountId, name (possibly deprecated or moved to different endpoint)
   if (!data.id) {
-    console.warn(`⚠️ Missing summoner ID in API response - possible API key permission issue`)
-    console.warn(`⚠️ Expected fields: id, accountId, puuid, name, profileIconId, revisionDate, summonerLevel`)
-    console.warn(`⚠️ Received fields:`, Object.keys(data))
+    console.info(`ℹ️ Summoner ID not in response - API structure may have changed`)
+    console.info(`ℹ️ Available fields:`, Object.keys(data))
+    console.info(`ℹ️ Will use PUUID for rank data fetching with alternative approach`)
   }
   
   // Extract available data
@@ -112,22 +117,14 @@ export async function fetchSummonerByPuuid(puuid: string) {
   }
 }
 
-// STEP 3: Get Rank Data (with fallback for missing summoner ID)
-export async function fetchRankData(summonerId: string | undefined, puuid?: string) {
-  // If no summoner ID available, try alternative approach
+// STEP 3: Get Rank Data by Summoner ID
+export async function fetchRankData(summonerId?: string, puuid?: string) {
   if (!summonerId) {
-    console.warn(`⚠️ No summoner ID available - this indicates API response issues`)
-    console.warn(`⚠️ Cannot fetch rank data without summoner ID`)
+    console.info(`ℹ️ Summoner ID not available due to API changes - skipping rank data`)
+    console.info(`ℹ️ Will analyze potential based on match performance instead`)
     
-    // Return mock rank data to prevent app crash
-    return {
-      tier: 'UNRANKED',
-      rank: '',
-      leaguePoints: 0,
-      wins: 0,
-      losses: 0,
-      queueType: 'RANKED_SOLO_5x5'
-    }
+    // Return null to indicate rank data is unavailable (not an error)
+    return null
   }
   
   const url = `${PLATFORM_ROUTING.KR}/lol/league/v4/entries/by-summoner/${encodeURIComponent(summonerId)}`

@@ -3,29 +3,24 @@ import { PotentialAnalysis, RankData, MatchData, ParticipantData } from '@/types
 // Enhanced potential analysis algorithm following the specified approach
 export function analyzePotential(
   summonerName: string,
-  rankData: RankData | RankData[],
+  rankData: RankData | RankData[] | null,
   recentMatches: MatchData[],
   summonerPuuid: string
 ): PotentialAnalysis {
+  // Handle null rank data (API changes)
+  if (!rankData) {
+    console.info(`📊 Analyzing potential based on match performance only`)
+    return analyzeByMatchDataOnly(summonerName, recentMatches, summonerPuuid)
+  }
+
   // Handle both single rank object and array of ranks
   const soloQueueData = Array.isArray(rankData) 
     ? rankData.find(rank => rank.queueType === 'RANKED_SOLO_5x5')
     : rankData
   
   if (!soloQueueData) {
-    return {
-      summonerName,
-      rank: 'Unranked',
-      tier: '',
-      lp: 0,
-      winRate: 0,
-      recentGames: 0,
-      potentialScore: 50,
-      potentialText: '랭크 게임 데이터가 부족하여 정확한 분석이 어렵습니다',
-      strengths: ['랭크 게임 참여 권장'],
-      improvements: ['솔로 랭크 게임을 통한 실력 측정 필요'],
-      trend: 'stable'
-    }
+    console.info(`📊 No ranked data found - analyzing based on match performance`)
+    return analyzeByMatchDataOnly(summonerName, recentMatches, summonerPuuid)
   }
 
   const winRate = Math.round((soloQueueData.wins / (soloQueueData.wins + soloQueueData.losses)) * 100)
@@ -52,6 +47,130 @@ export function analyzePotential(
     improvements: identifyAdvancedImprovements(performanceMetrics, playStyleAnalysis, soloQueueData),
     trend
   }
+}
+
+// Match-only analysis function for when rank data is unavailable
+function analyzeByMatchDataOnly(
+  summonerName: string,
+  recentMatches: MatchData[],
+  summonerPuuid: string
+): PotentialAnalysis {
+  if (recentMatches.length === 0) {
+    return {
+      summonerName,
+      rank: 'Unknown',
+      tier: '',
+      lp: 0,
+      winRate: 0,
+      recentGames: 0,
+      potentialScore: 50,
+      potentialText: '최근 경기 데이터가 부족하여 분석이 어렵습니다',
+      strengths: ['더 많은 게임 플레이 권장'],
+      improvements: ['게임 활동량 증가 필요'],
+      trend: 'stable'
+    }
+  }
+
+  const performanceMetrics = calculatePerformanceMetrics(recentMatches, summonerPuuid)
+  const playStyleAnalysis = analyzePlayStyle(recentMatches, summonerPuuid)
+  
+  // Calculate win rate from recent matches
+  const validPerformances = performanceMetrics.performances.filter(p => p !== null)
+  const wins = validPerformances.filter(p => p.win).length
+  const winRate = Math.round((wins / validPerformances.length) * 100)
+  
+  // Calculate potential score based on performance metrics only
+  const avgKDA = validPerformances.reduce((sum, p) => sum + p.kda, 0) / validPerformances.length
+  const avgCSPerMin = validPerformances.reduce((sum, p) => sum + p.csPerMinute, 0) / validPerformances.length
+  const avgVisionScore = validPerformances.reduce((sum, p) => sum + p.visionScorePerMinute, 0) / validPerformances.length
+  
+  // Performance-based scoring (0-100)
+  let potentialScore = 50 // Base score
+  
+  // KDA impact (0-25 points)
+  if (avgKDA >= 3.0) potentialScore += 25
+  else if (avgKDA >= 2.0) potentialScore += 15
+  else if (avgKDA >= 1.5) potentialScore += 10
+  else if (avgKDA >= 1.0) potentialScore += 5
+  
+  // Win rate impact (0-25 points)
+  if (winRate >= 70) potentialScore += 25
+  else if (winRate >= 60) potentialScore += 20
+  else if (winRate >= 55) potentialScore += 15
+  else if (winRate >= 50) potentialScore += 10
+  
+  // CS impact (0-15 points)
+  if (avgCSPerMin >= 8.0) potentialScore += 15
+  else if (avgCSPerMin >= 6.5) potentialScore += 10
+  else if (avgCSPerMin >= 5.0) potentialScore += 5
+  
+  // Vision impact (0-10 points)
+  if (avgVisionScore >= 2.0) potentialScore += 10
+  else if (avgVisionScore >= 1.5) potentialScore += 5
+  
+  potentialScore = Math.min(100, Math.max(0, potentialScore))
+  
+  const trend = winRate >= 60 ? 'ascending' : winRate <= 40 ? 'descending' : 'stable'
+  
+  return {
+    summonerName,
+    rank: 'Performance-Based',
+    tier: '',
+    lp: 0,
+    winRate,
+    recentGames: recentMatches.length,
+    potentialScore,
+    potentialText: generateMatchBasedAnalysis(potentialScore, winRate, avgKDA, avgCSPerMin),
+    strengths: identifyMatchBasedStrengths(validPerformances, playStyleAnalysis),
+    improvements: identifyMatchBasedImprovements(validPerformances, playStyleAnalysis),
+    trend
+  }
+}
+
+function generateMatchBasedAnalysis(score: number, winRate: number, kda: number, csPerMin: number): string {
+  if (score >= 80) {
+    return `뛰어난 게임 퍼포먼스로 ${winRate}% 승률과 ${kda.toFixed(1)} KDA를 기록하는 상위권 실력의 플레이어`
+  } else if (score >= 65) {
+    return `안정적인 플레이로 ${winRate}% 승률을 유지하며 꾸준한 성장세를 보이는 플레이어`
+  } else if (score >= 50) {
+    return `평균적인 실력으로 ${winRate}% 승률을 기록하며 개선 여지가 있는 플레이어`
+  } else {
+    return `${winRate}% 승률로 실력 향상이 필요하며 기본기 연습을 통한 성장이 기대되는 플레이어`
+  }
+}
+
+function identifyMatchBasedStrengths(metrics: any[], playStyle: any): string[] {
+  const strengths = []
+  const avgKDA = metrics.reduce((sum, p) => sum + p.kda, 0) / metrics.length
+  const avgCSPerMin = metrics.reduce((sum, p) => sum + p.csPerMinute, 0) / metrics.length
+  const winRate = metrics.filter(p => p.win).length / metrics.length
+  
+  if (avgKDA >= 2.5) strengths.push("높은 KDA로 안정적인 플레이 능력")
+  if (avgCSPerMin >= 7.0) strengths.push("우수한 CS 수급 능력")
+  if (winRate >= 0.6) strengths.push("높은 승률로 게임 캐리 능력")
+  
+  if (strengths.length === 0) {
+    strengths.push("게임에 대한 열정과 개선 의지")
+  }
+  
+  return strengths
+}
+
+function identifyMatchBasedImprovements(metrics: any[], playStyle: any): string[] {
+  const improvements = []
+  const avgKDA = metrics.reduce((sum, p) => sum + p.kda, 0) / metrics.length
+  const avgCSPerMin = metrics.reduce((sum, p) => sum + p.csPerMinute, 0) / metrics.length
+  const avgDeaths = metrics.reduce((sum, p) => sum + p.deaths, 0) / metrics.length
+  
+  if (avgKDA < 1.5) improvements.push("데스 줄이기와 안전한 포지셔닝 연습")
+  if (avgCSPerMin < 6.0) improvements.push("CS 수급 패턴 개선 및 라인전 실력 향상")
+  if (avgDeaths > 7) improvements.push("맵 인식 능력 향상과 위험 상황 판단력 개선")
+  
+  if (improvements.length === 0) {
+    improvements.push("지속적인 게임 플레이를 통한 경험 축적")
+  }
+  
+  return improvements
 }
 
 // Step 2.1: Calculate comprehensive performance metrics
