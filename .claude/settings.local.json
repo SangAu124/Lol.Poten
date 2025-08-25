@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:developer.riotgames.com)",
+      "Bash(npm run dev:*)",
+      "Read(//var/folders/7n/crp0nvzn6s3dt0pm58rb7fwc0000gp/T/TemporaryItems/NSIRD_screencaptureui_bMx9hf/**)",
+      "Read(//var/folders/7n/crp0nvzn6s3dt0pm58rb7fwc0000gp/T/TemporaryItems/NSIRD_screencaptureui_bI2tUR/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

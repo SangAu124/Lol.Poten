@@ -25,76 +25,45 @@ export default function AnalysisPage() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Enhanced API integration with proper PUUID flow
+    const controller = new AbortController()
+    
     const fetchAnalysis = async () => {
+      if (!summonerName) return
+      
       setIsLoading(true)
       
       try {
-        // Step 1: Parse and get account data
-        let accountData
-        const decodedName = decodeURIComponent(summonerName)
+        const response = await fetch('/api/analysis', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            summonerInput: summonerName
+          }),
+          signal: controller.signal
+        })
         
-        // Check if input contains # (Riot ID format)
-        if (decodedName.includes('#')) {
-          const [gameName, tagLine] = decodedName.split('#')
-          console.log(`Trying Riot ID: ${gameName}#${tagLine}`)
-          
-          try {
-            const { fetchAccountData } = await import('@/utils/riotApi')
-            accountData = await fetchAccountData(`${gameName}#${tagLine || 'KR1'}`)
-          } catch (error) {
-            console.error('Riot ID lookup failed:', error)
-            throw error
+        const result = await response.json()
+        
+        if (!response.ok) {
+          if (response.status === 429) {
+            throw new Error('Rate limit exceeded. Please wait a few seconds and try again.')
           }
+          throw new Error(result.error || 'Analysis failed')
+        }
+        
+        if (result.success && result.data) {
+          setAnalysisData(result.data)
         } else {
-          // Legacy summoner name format
-          console.log(`Trying legacy summoner name: ${decodedName}`)
-          try {
-            const { fetchSummonerByName } = await import('@/utils/riotApi')
-            accountData = await fetchSummonerByName(decodedName)
-          } catch (error) {
-            console.error('Legacy summoner lookup failed:', error)
-            throw error
-          }
+          throw new Error('Invalid response format')
         }
-
-        if (!accountData?.puuid) {
-          throw new Error('PUUID not found')
-        }
-
-        // Step 2: Get summoner data using PUUID
-        const { fetchSummonerByPuuid } = await import('@/utils/riotApi')
-        const summonerData = await fetchSummonerByPuuid(accountData.puuid)
         
-        console.log('🔍 Account data:', { puuid: accountData.puuid?.substring(0, 8) + '...' })
-        console.log('🔍 Summoner data:', { id: summonerData?.id, level: summonerData?.summonerLevel })
-        
-        // Continue even if summoner ID is missing - we'll handle it in fetchRankData
-        console.log('🔄 Proceeding with available data...')
-        
-        const { fetchRankData, fetchMatchHistory, fetchMultipleMatchDetails } = await import('@/utils/riotApi')
-        const rankData = await fetchRankData(summonerData?.id, accountData.puuid)
-        
-        // Step 3: Get recent match history (20 games)
-        const matchIds = await fetchMatchHistory(accountData.puuid, 20)
-        const matchDetails = await fetchMultipleMatchDetails(matchIds)
-        
-        // Step 4: Analyze potential using enhanced algorithm
-        console.log(`🔄 Starting potential analysis...`)
-        console.log(`📊 Rank data:`, rankData)
-        console.log(`📋 Match details count:`, matchDetails.length)
-        
-        const { analyzePotential } = await import('@/utils/potentialAnalyzer')
-        
-        try {
-          const analysis = analyzePotential(summonerName, rankData, matchDetails, accountData.puuid)
-          console.log(`✅ Analysis completed:`, analysis)
-          setAnalysisData(analysis)
-        } catch (analysisError) {
-          console.error(`❌ Analysis function error:`, analysisError)
-          throw analysisError
-        }
       } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          console.log('Analysis request aborted')
+          return
+        }
         console.error('Analysis failed:', error)
         // Fallback to mock data for demonstration
         const mockData: AnalysisData = {
@@ -124,6 +93,10 @@ export default function AnalysisPage() {
     }
 
     fetchAnalysis()
+    
+    return () => {
+      controller.abort()
+    }
   }, [summonerName])
 
   if (isLoading) {

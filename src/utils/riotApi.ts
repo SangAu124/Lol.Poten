@@ -1,7 +1,7 @@
 // Riot API utilities for League of Legends data fetching
 // Optimized according to Riot API documentation and best practices
 
-const RIOT_API_KEY = process.env.NEXT_PUBLIC_RIOT_API_KEY
+const RIOT_API_KEY = process.env.RIOT_API_KEY
 
 // Routing values according to Riot API documentation
 const REGIONAL_ROUTING = {
@@ -35,8 +35,7 @@ async function makeApiRequest(url: string): Promise<any> {
     const response = await fetch(url, {
       headers: {
         'X-Riot-Token': RIOT_API_KEY,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'User-Agent': 'Lol.Poten/1.0.0 (https://lol-poten.app)','Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
         'Accept': 'application/json',
         'Content-Type': 'application/json',
       },
@@ -76,11 +75,11 @@ export async function fetchAccountData(riotId: string) {
     throw new Error('Invalid Riot ID format. Expected format: gameName#tagLine')
   }
 
-  // Updated to use correct ACCOUNT-V1 endpoint
+  // Use correct ACCOUNT-V1 endpoint with proper regional routing
   const url = `${REGIONAL_ROUTING.ASIA}/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`
-  console.log(`🔍 Fetching account data from: ${url}`)
+  console.log(`🔍 Fetching account data for: ${gameName}#${tagLine}`)
   const data = await makeApiRequest(url)
-  console.log(`🔍 Full account response:`, data)
+  console.log(`✅ Account found: ${data.gameName}#${data.tagLine} (Level ${data.summonerLevel || 'Unknown'})`)
   
   return data
 }
@@ -88,19 +87,16 @@ export async function fetchAccountData(riotId: string) {
 // STEP 2: Get Summoner by PUUID (Recommended per Riot API docs)
 export async function fetchSummonerByPuuid(puuid: string) {
   const url = `${PLATFORM_ROUTING.KR}/lol/summoner/v4/summoners/by-puuid/${encodeURIComponent(puuid)}`
-  console.log(`👤 Fetching summoner by PUUID: ${puuid.substring(0, 8)}...`)
+  console.log(`👤 Fetching summoner data...`)
   const data = await makeApiRequest(url)
-  console.log(`🔍 Full summoner response:`, data)
-  console.log(`🔍 All response keys:`, Object.keys(data))
   
   // According to Riot API docs, SUMMONER-V4 should return 'id' field
   const summonerId = data.id
   if (!summonerId) {
-    console.warn(`⚠️ Summoner ID not in response - this may indicate API key permission issues`)
-    console.warn(`⚠️ Available fields:`, Object.keys(data))
-    console.warn(`⚠️ Expected 'id' field for summoner ID extraction`)
+    console.warn(`⚠️ Summoner ID unavailable - API key has limited permissions`)
+    console.log(`📋 Summoner Info: Level ${data.summonerLevel} | Icon ${data.profileIconId}`)
   } else {
-    console.log(`✅ Successfully extracted summoner ID: ${summonerId.substring(0, 8)}...`)
+    console.log(`✅ Summoner Data: Level ${data.summonerLevel} | ID: ${summonerId.substring(0, 8)}...`)
   }
 
   return {
@@ -145,18 +141,16 @@ export async function fetchRankData(summonerId?: string, puuid?: string) {
 
   try {
     const url = `${PLATFORM_ROUTING.KR}/lol/league/v4/entries/by-summoner/${encodeURIComponent(summonerId)}`
-    console.log(`🔍 Fetching rank data from: ${url}`)
+    console.log(`🏆 Fetching rank data...`)
     const data = await makeApiRequest(url)
-    console.log(`✅ Rank data entries found: ${data.length}`)
     
     if (data.length > 0) {
-      console.log(`🎯 Available queue types:`, data.map((entry: any) => `${entry.queueType}: ${entry.tier} ${entry.rank}`))
-      
       // Return the ranked solo/duo data (most relevant for analysis)
       const rankedEntry = data.find((entry: any) => entry.queueType === 'RANKED_SOLO_5x5')
       if (rankedEntry) {
-        console.log(`🎯 Found ranked solo/duo: ${rankedEntry.tier} ${rankedEntry.rank}`)
-        console.log(`📊 Rank stats: ${rankedEntry.wins}승 ${rankedEntry.losses}패 (${Math.round((rankedEntry.wins / (rankedEntry.wins + rankedEntry.losses)) * 100)}%)`)
+        const winRate = Math.round((rankedEntry.wins / (rankedEntry.wins + rankedEntry.losses)) * 100)
+        console.log(`🏆 Rank: ${rankedEntry.tier} ${rankedEntry.rank} ${rankedEntry.leaguePoints}LP`)
+        console.log(`📊 Season Record: ${rankedEntry.wins}W ${rankedEntry.losses}L (${winRate}%)`)
         return rankedEntry
       }
       
@@ -166,7 +160,7 @@ export async function fetchRankData(summonerId?: string, puuid?: string) {
     }
     
     // No ranked data found
-    console.log(`📊 No ranked data found - player is unranked`)
+    console.log(`📊 Unranked player`)
     return {
       leagueId: 'unranked',
       queueType: 'RANKED_SOLO_5x5',
@@ -183,30 +177,19 @@ export async function fetchRankData(summonerId?: string, puuid?: string) {
       hotStreak: false
     }
   } catch (error) {
-    console.error(`❌ Failed to fetch rank data:`, error)
-    return {
-      leagueId: 'error',
-      queueType: 'RANKED_SOLO_5x5',
-      tier: 'UNRANKED',
-      rank: '',
-      summonerId: summonerId || 'unknown',
-      summonerName: 'Unknown',
-      leaguePoints: 0,
-      wins: 0,
-      losses: 0,
-      veteran: false,
-      inactive: false,
-      freshBlood: false,
-      hotStreak: false
-    }
+    console.error(`❌ Rank data fetch failed:`, error)
+    return null
   }
 }
 
 // STEP 4: Get Match History by PUUID
 export async function fetchMatchHistory(puuid: string, count: number = 20) {
+  // queue=420 is Solo/Duo Ranked, queue=440 is Flex Ranked
   const url = `${REGIONAL_ROUTING.ASIA}/lol/match/v5/matches/by-puuid/${encodeURIComponent(puuid)}/ids?start=0&count=${count}&queue=420`
-  console.log(`📋 Fetching ${count} recent ranked matches`)
-  return await makeApiRequest(url)
+  console.log(`📋 Fetching ${count} recent matches...`)
+  const matchIds = await makeApiRequest(url)
+  console.log(`✅ Found ${matchIds.length} matches`)
+  return matchIds
 }
 
 // STEP 5: Get Match Details
@@ -217,7 +200,7 @@ export async function fetchMatchDetails(matchId: string) {
 
 // Batch fetch multiple match details with proper rate limiting
 export async function fetchMultipleMatchDetails(matchIds: string[]) {
-  console.log(`⚡ Fetching ${matchIds.length} match details`)
+  console.log(`⚡ Fetching match details... (0/${matchIds.length})`)
   const results = []
   
   for (let i = 0; i < matchIds.length; i++) {
@@ -225,37 +208,63 @@ export async function fetchMultipleMatchDetails(matchIds: string[]) {
       const matchData = await fetchMatchDetails(matchIds[i])
       results.push(matchData)
       
-      // Rate limiting: 100 requests per 2 minutes for personal API key
+      // Show progress every 5 matches
+      if ((i + 1) % 5 === 0 || i === matchIds.length - 1) {
+        console.log(`⚡ Progress: ${i + 1}/${matchIds.length} matches fetched`)
+      }
+      
+      // Rate limiting: Very conservative approach for stability (3s per request)
       if (i < matchIds.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 120))
+        await new Promise(resolve => setTimeout(resolve, 3000))
       }
     } catch (error) {
-      console.warn(`❌ Failed to fetch match ${matchIds[i]}:`, error)
+      console.warn(`❌ Failed to fetch match ${i + 1}:`, error)
       // Continue with other matches even if one fails
     }
   }
   
-  console.log(`✅ Successfully fetched ${results.length}/${matchIds.length} matches`)
+  console.log(`✅ Completed: ${results.length}/${matchIds.length} matches`)
   return results
 }
 
 // Helper function to extract rank data from match participants
 async function extractRankFromMatches(puuid: string) {
   try {
-    console.log(`🔍 Extracting rank from recent ranked matches...`)
+    console.log(`🔍 Attempting rank estimation from recent matches...`)
     
     // Get recent ranked matches (more matches for better estimation)
     const matchIds = await fetchMatchHistory(puuid, 10)
     if (matchIds.length === 0) {
-      console.warn(`⚠️ No ranked matches found for rank extraction`)
       return null
     }
     
-    // Get match details for multiple matches for better accuracy
+    // Try to get summoner ID from match data first
+    const firstMatch = await fetchMatchDetails(matchIds[0])
+    const participant = firstMatch.info.participants.find((p: any) => p.puuid === puuid)
+    
+    if (participant && participant.summonerId) {
+      console.log(`🎯 Found Summoner ID in match data, attempting rank lookup...`)
+      try {
+        const url = `${PLATFORM_ROUTING.KR}/lol/league/v4/entries/by-summoner/${encodeURIComponent(participant.summonerId)}`
+        const rankData = await makeApiRequest(url)
+        
+        if (rankData && rankData.length > 0) {
+          const soloRank = rankData.find((entry: any) => entry.queueType === 'RANKED_SOLO_5x5')
+          if (soloRank) {
+            const winRate = Math.round((soloRank.wins / (soloRank.wins + soloRank.losses)) * 100)
+            console.log(`🏆 REAL RANK: ${soloRank.tier} ${soloRank.rank} ${soloRank.leaguePoints}LP (${winRate}% WR)`)
+            return soloRank
+          }
+        }
+      } catch (error) {
+        console.log(`⚠️ Rank API unavailable, falling back to estimation...`)
+      }
+    }
+    
+    // Fallback to estimation
     const matchesToAnalyze = Math.min(3, matchIds.length)
     const matchDetails = await fetchMultipleMatchDetails(matchIds.slice(0, matchesToAnalyze))
     if (matchDetails.length === 0) {
-      console.warn(`⚠️ No match details available for rank extraction`)
       return null
     }
     
@@ -263,13 +272,13 @@ async function extractRankFromMatches(puuid: string) {
     for (const match of matchDetails) {
       const participant = match.info.participants.find((p: any) => p.puuid === puuid)
       if (participant && participant.tier && participant.rank) {
-        console.log(`✅ Found rank in match data: ${participant.tier} ${participant.rank}`)
+        console.log(`✅ Found embedded rank: ${participant.tier} ${participant.rank}`)
         return {
           leagueId: 'extracted-from-match',
           queueType: 'RANKED_SOLO_5x5',
           tier: participant.tier,
           rank: participant.rank,
-          summonerId: 'unknown',
+          summonerId: participant.summonerId || 'unknown',
           summonerName: participant.summonerName || 'Unknown',
           leaguePoints: participant.leaguePoints || 0,
           wins: 0,
@@ -283,7 +292,7 @@ async function extractRankFromMatches(puuid: string) {
     }
     
     // Enhanced rank estimation using multiple matches
-    console.log(`🔍 Estimating rank based on ${matchDetails.length} matches...`)
+    console.log(`📈 Estimating rank from ${matchDetails.length} matches...`)
     
     const playerStats = []
     let totalPlayerPerformance = {
@@ -417,8 +426,8 @@ async function extractRankFromMatches(puuid: string) {
       confidence = 'Low'
     }
     
-    console.log(`📊 Enhanced rank estimation: ${estimatedTier} ${estimatedRank} (Score: ${rankScore}/100, Confidence: ${confidence})`)
-    console.log(`📈 Stats: Level ${avgStats.level.toFixed(0)}, KDA ${avgStats.kda.toFixed(2)}, CS/min ${avgStats.csPerMin.toFixed(1)}, Vision/min ${avgStats.visionScorePerMin.toFixed(1)}, WR ${avgStats.winRate.toFixed(0)}%`)
+    console.log(`🏆 ESTIMATED RANK: ${estimatedTier} ${estimatedRank} (${confidence} confidence)`)
+    console.log(`📈 Based on: ${avgStats.kda.toFixed(1)} KDA | ${avgStats.csPerMin.toFixed(1)} CS/min | ${avgStats.winRate.toFixed(0)}% WR`)
     
     return {
       leagueId: 'estimated-enhanced',
@@ -437,7 +446,7 @@ async function extractRankFromMatches(puuid: string) {
     }
     
   } catch (error) {
-    console.error(`❌ Failed to extract rank from matches:`, error)
+    console.error(`❌ Rank extraction failed:`, error)
     return null
   }
 }

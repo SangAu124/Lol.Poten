@@ -7,6 +7,11 @@ export function analyzePotential(
   recentMatches: MatchData[],
   summonerPuuid: string
 ): PotentialAnalysis {
+  console.log(`
+📊 === POTENTIAL ANALYSIS START ===`)
+  console.log(`👤 Summoner: ${summonerName}`)
+  console.log(`📋 Matches: ${recentMatches.length} recent games`)
+  
   // Handle null rank data (API changes)
   if (!rankData) {
     console.info(`📊 Analyzing potential based on match performance only`)
@@ -23,28 +28,44 @@ export function analyzePotential(
     return analyzeByMatchDataOnly(summonerName, recentMatches, summonerPuuid)
   }
 
-  console.log(`🔍 Solo queue data:`, soloQueueData)
-
-  const totalGames = (soloQueueData.wins || 0) + (soloQueueData.losses || 0)
-  const winRate = totalGames > 0 ? Math.round(((soloQueueData.wins || 0) / totalGames) * 100) : 0
+  // IMPORTANT: Use actual match data for win rate calculation instead of rank API data
+  const performanceMetrics = calculatePerformanceMetrics(recentMatches, summonerPuuid)
+  const actualWinRate = Math.round(performanceMetrics.recentWinRate)
   
-  console.log(`🔍 WinRate calculation: wins=${soloQueueData.wins}, losses=${soloQueueData.losses}, totalGames=${totalGames}, winRate=${winRate}`)
+  // Display rank information
+  if (soloQueueData.leagueId === 'estimated-enhanced') {
+    console.log(`🏆 ESTIMATED: ${soloQueueData.tier} ${soloQueueData.rank} (API limited)`)
+  } else if (soloQueueData.leagueId === 'extracted-from-match') {
+    console.log(`🏆 FROM MATCH: ${soloQueueData.tier} ${soloQueueData.rank} (Match data)`)
+  } else {
+    console.log(`🏆 OFFICIAL: ${soloQueueData.tier} ${soloQueueData.rank} ${soloQueueData.leaguePoints}LP`)
+  }
+  
+  console.log(`📊 Match-based Stats: ${actualWinRate}% WR | ${performanceMetrics.avgKDA.toFixed(2)} KDA`)
   const recentGames = recentMatches.length
 
-  // Step 2: Comprehensive data analysis
-  const performanceMetrics = calculatePerformanceMetrics(recentMatches, summonerPuuid)
+  // Step 2: Comprehensive data analysis  
   const playStyleAnalysis = analyzePlayStyle(recentMatches, summonerPuuid)
   
   // Step 3: Advanced scoring with weighted algorithm
   const potentialScore = calculateWeightedPotentialScore(soloQueueData, performanceMetrics, playStyleAnalysis)
   const trend = determineTrend(performanceMetrics)
   
+  console.log(`
+📈 ANALYSIS RESULTS:`)
+  console.log(`Score: ${potentialScore}/100 | Trend: ${trend}`)
+  console.log(`Performance: ${actualWinRate}% WR | ${performanceMetrics.avgKDA.toFixed(2)} KDA | ${performanceMetrics.avgCSPerMinute.toFixed(1)} CS/min`)
+  console.log(`📊 === ANALYSIS COMPLETE ===
+`)
+  
   return {
     summonerName,
-    rank: soloQueueData.tier,
-    tier: soloQueueData.rank,
+    rank: soloQueueData.leagueId === 'estimated-enhanced' ? `${soloQueueData.rank} (Est.)` : 
+           soloQueueData.leagueId === 'extracted-from-match' ? `${soloQueueData.rank} (Match)` : soloQueueData.rank,
+    tier: soloQueueData.leagueId === 'estimated-enhanced' ? `${soloQueueData.tier} (Estimated)` : 
+          soloQueueData.leagueId === 'extracted-from-match' ? `${soloQueueData.tier} (From Match)` : soloQueueData.tier,
     lp: soloQueueData.leaguePoints,
-    winRate,
+    winRate: actualWinRate, // Use actual match-based win rate
     recentGames,
     potentialScore,
     potentialText: generateDynamicOneLiner(potentialScore, trend, performanceMetrics, playStyleAnalysis),
@@ -182,11 +203,22 @@ function identifyMatchBasedImprovements(metrics: any[], playStyle: any): string[
 
 // Step 2.1: Calculate comprehensive performance metrics
 function calculatePerformanceMetrics(matches: MatchData[], summonerPuuid: string) {
-  const performances = matches.map(match => {
+  console.log(`📈 Processing ${matches.length} matches...`)
+  
+  const performances = matches.map((match, index) => {
     const participant = match.info.participants.find(p => p.puuid === summonerPuuid)
-    if (!participant) return null
+    if (!participant) {
+      return null
+    }
 
     const gameDurationMinutes = match.info.gameDuration / 60
+    
+    // Only log first few and last few matches to reduce spam
+    if (index < 3 || index >= matches.length - 3) {
+      console.log(`🎮 Match ${index + 1}: ${participant.win ? '승' : '패'} - ${participant.kills}/${participant.deaths}/${participant.assists} (${gameDurationMinutes.toFixed(0)}m)`)
+    } else if (index === 3) {
+      console.log(`🎮 ... processing matches 4-${matches.length - 3} ...`)
+    }
     
     return {
       win: participant.win,
@@ -220,11 +252,15 @@ function calculatePerformanceMetrics(matches: MatchData[], summonerPuuid: string
   }).filter(Boolean)
 
   if (performances.length === 0) {
+    console.warn(`⚠️ No valid performances found`)
     return getDefaultMetrics()
   }
 
   const wins = performances.filter(p => p?.win).length
+  const losses = performances.filter(p => p && !p.win).length
   const totalGames = performances.length
+  
+  console.log(`📊 Summary: ${wins}W ${losses}L (${((wins/totalGames)*100).toFixed(0)}% WR)`)
 
   return {
     // Basic metrics
@@ -514,6 +550,8 @@ function generateDynamicOneLiner(score: number, trend: string, metrics: any, pla
 // Advanced strength identification
 function identifyAdvancedStrengths(metrics: any, playStyle: any, rankData: RankData): string[] {
   const strengths: string[] = []
+  
+  // Removed detailed metrics logging to reduce spam
   
   // Performance-based strengths
   if (metrics.avgKDA > 2.5) {
